@@ -1,6 +1,8 @@
 {
   "dependencies": {
     "abi-decoder": "^2.4.0",
-    "ethers": "^5.7.0"
+    "axios": "^0.27.2",
+    "ethers": "^5.7.0",
+    "multicall-decode": "^1.0.2"
   }
 }
