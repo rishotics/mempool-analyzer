@@ -85,8 +85,8 @@ describe("LiquidityUniswapV3", () => {
   let accounts
   let dai
   let usdc
-  let daiAmount = 1000n * 10n ** 18n
-  let usdcAmount = 1000n * 10n ** 6n
+  let daiAmount = 1000000n * 10n ** 18n
+  let usdcAmount = 1000000n * 10n ** 6n
   let poolContract
   let nonfungiblePositionManagerContract
 
@@ -152,7 +152,7 @@ describe("LiquidityUniswapV3", () => {
       state.liquidity.toString(),
       state.tick
     )
-    console.log(daiUsdcPool)
+    // console.log(daiUsdcPool)
 
     const position = new Position({
       pool: daiUsdcPool,
@@ -177,50 +177,32 @@ describe("LiquidityUniswapV3", () => {
       deadline: Math.floor(Date.now() / 1000) + (60 * 10)
     }
 
-    console.log(`amount0Desired.toString(): ${ethers.utils.formatEther(amount0Desired.toString())} 
-                amount1Desired.toString() : ${(amount1Desired.toString())}`)
+    let slot0 = await poolContract.slot0();
+    let sqrt_price = ((BigNumber.from(slot0.sqrtPriceX96)).toString())
 
-    let approvalAmount = ethers.utils.parseUnits('100', 18).toString()
-    await dai.connect(accounts[0]).approve(
-      positionManagerAddress,
-      approvalAmount
-    )
-    approvalAmount = ethers.utils.parseUnits('100', 6).toString()
-    await usdc.connect(accounts[0]).approve(
-      positionManagerAddress,
-      approvalAmount
-    )
+    const priceInit = univ3prices([18, 6], sqrt_price).toSignificant({ decimalPlaces: 3 });
+    console.log(`price: ${priceInit}`)
 
-    const token0Price =  (daiUsdcPool.token0Price)
-    console.log(token0Price['scalar'])
-    const token1Price =  (daiUsdcPool.token1Price)
-    console.log(token1Price)
+    const SwapFactory = await ethers.getContractFactory("SwapUniswapV3")
+    swapContract = await SwapFactory.deploy()
+    await swapContract.deployed()
 
-    // console.log(`DAI Price: ${token0Price.toString()} USDC Price: ${token1Price}`)
-    const deadline = Math.floor(Date.now() / 1000) + (60 * 10)
+    const amountIn = 100000n ** 18n
+    const dai_in = ethers.utils.parseEther("100000")
+    await dai.connect(accounts[0]).approve(swapContract.address, dai_in)
+    // Swap
+    console.log("USDC balance before swap", await usdc.balanceOf(accounts[0].address))
+    await swapContract.swapExactInputSingle(dai_in)
+    console.log("USDC balance after swap", await usdc.balanceOf(accounts[0].address))
 
-    console.log(
-      "DAI balance before add liquidity",
-      ethers.utils.formatEther(await dai.balanceOf(accounts[0].address))
-    )
-    console.log(
-      "USDC balance before add liquidity",
-      ethers.utils.formatUnits(await usdc.balanceOf(accounts[0].address), 6)
-    )
+    let slot0_final = await poolContract.slot0();
+    let sqrt_price_final = ((BigNumber.from(slot0_final.sqrtPriceX96)).toString())
 
-    const { calldata, value } = NonfungiblePositionManager.addCallParameters(position, {
-      slippageTolerance: new Percent(50, 10_000),
-      recipient: accounts[0].address,
-      deadline: deadline,
-    })
-    console.log(calldata)
-    console.log(value)
+    const priceFinal = univ3prices([18, 6], sqrt_price_final).toSignificant({ decimalPlaces: 3 });
+    console.log(`price Final: ${priceFinal}`)
 
-    let out = await poolContract.slot0();
-    let sqrt_price = ((BigNumber.from(out.sqrtPriceX96)).toString())
 
-    const price = univ3prices([18, 6], sqrt_price).toSignificant({ decimalPlaces: 3 });
-    console.log(price)
+
 
     // await nonfungiblePositionManagerContract.connect(accounts[0]).mint(
     //   params,
