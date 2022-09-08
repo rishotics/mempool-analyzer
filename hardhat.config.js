@@ -1,6 +1,6 @@
 require("@nomiclabs/hardhat-waffle")
 
-
+require('dotenv').config({path: ".env.local" })
 module.exports = {
   solidity: {
     compilers: [
@@ -10,7 +10,10 @@ module.exports = {
           evmVersion: "istanbul",
           optimizer: {
             enabled: true,
-            runs: 1000,
+            runs: 1_000_000,
+          },
+          metadata: {
+            bytecodeHash: "none",
           },
         },
       },
@@ -19,7 +22,7 @@ module.exports = {
   networks: {
     hardhat: {
       forking: {
-        url: "https://eth-mainnet.g.alchemy.com/v2/UOdRxTyyeJu4-FcOki2B-pfG0RnekNMV",
+        url: process.env.ALCHEMY_URL_MAINNET,
       },
     },
   },
