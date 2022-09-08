@@ -56,11 +56,14 @@ var init = function () {
       let parameters = extractParameters(signature);
       let decoded = web3.eth.abi.decodeParameters(parameters, data);
 
-      for (let i = 0; i < parameters.length; i++) {
-        console.log(
-          `\nParameter ${i} - Type : ${parameters[i]} - Value : ${decoded[i]}`
-        );
-      }
+      // for (let i = 0; i < parameters.length; i++) {
+      //   console.log(
+      //     `\nParameter ${i} - Type : ${parameters[i]} - Value : ${decoded[i]}`
+      //   );
+      // }
+
+      console.log(`\nParameter ${0} - Type : ${parameters[0]} - amountIn Value : ${ethers.utils.parseEther(decoded[0])} \nParameter ${1} - Type : ${ethers.utils.parseEther(parameters[1])} - amountOutMin Value : ${decoded[1]} \nParameter ${2} - Type : ${parameters[2]} - path : ${decoded[2]} \nParameter ${3} - Type : ${parameters[3]} - To : ${decoded[3]}`)
+      
     }
   }
 

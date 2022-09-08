@@ -1,8 +1,17 @@
 {
   "dependencies": {
+    "@uniswap/v3-periphery": "^1.4.1",
     "abi-decoder": "^2.4.0",
     "axios": "^0.27.2",
-    "ethers": "^5.7.0",
     "multicall-decode": "^1.0.2"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-chai-matchers": "^1.0.3",
+    "@nomicfoundation/hardhat-toolbox": "^1.0.2",
+    "@nomiclabs/hardhat-ethers": "^2.1.1",
+    "@nomiclabs/hardhat-waffle": "^2.0.3",
+    "ethereum-waffle": "^3.4.4",
+    "ethers": "^5.7.0",
+    "hardhat": "^2.11.1"
   }
 }
