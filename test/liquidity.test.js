@@ -166,8 +166,6 @@ describe("LiquidityUniswapV3", () => {
       ethers.utils.formatUnits(await usdc.balanceOf(accounts[0].address), 6)
     )
 
-
-
   })
 
 })

@@ -2,15 +2,21 @@
 pragma solidity =0.7.6;
 pragma abicoder v2;
 
+import "@openzeppelin/contracts/math/SafeMath.sol";
+
 import "@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol";
 import "@uniswap/v3-core/contracts/libraries/TickMath.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import "@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol";
 import "@uniswap/v3-periphery/contracts/interfaces/INonfungiblePositionManager.sol";
 import "@uniswap/v3-periphery/contracts/base/LiquidityManagement.sol";
+import {IUniswapV3} from "./interfaces/IUniswapV3.sol";
+
 import "hardhat/console.sol";
 
 contract LiquidityUniswapV3 is IERC721Receiver {
+        using SafeMath for uint256;
+
     address public constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
     address public constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     address public constant WETH9 = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
@@ -20,6 +26,8 @@ contract LiquidityUniswapV3 is IERC721Receiver {
 
     INonfungiblePositionManager public nonfungiblePositionManager = 
         INonfungiblePositionManager(0xC36442b4a4522E871399CD717aBDD847Ab11FE88);
+
+    IUniswapV3 internal factoryinstance = IUniswapV3(0x1F98431c8aD98523631AE4a59f267346ea31F984);
 
     /// @notice Represents the deposit of an NFT
     struct Deposit {
@@ -101,17 +109,23 @@ contract LiquidityUniswapV3 is IERC721Receiver {
             address(nonfungiblePositionManager),
             amount1ToMint
         );
+        address _poolAddress = factoryinstance.getPool(_token0, _token1, poolFee);
+        console.log(_poolAddress);
+
+        IUniswapV3Pool _pool;
+        _pool = IUniswapV3Pool(_poolAddress);
+        console.log("mint....:");
+        (int24 tickBefore) = getSqrtPriceAndTick(_pool);
+        int24 tickSpacing = _pool.tickSpacing();
+
 
         INonfungiblePositionManager.MintParams
             memory params = INonfungiblePositionManager.MintParams({
                 token0: _token0,
                 token1: _token1,
                 fee: poolFee,
-                // By using TickMath.MIN_TICK and TickMath.MAX_TICK, 
-                // we are providing liquidity across the whole range of the pool. 
-                // Not recommended in production.
-                tickLower: TickMath.MIN_TICK,
-                tickUpper: TickMath.MAX_TICK,
+                tickLower: tickBefore - (2 * tickSpacing),
+                tickUpper: tickBefore + (2 * tickSpacing),
                 amount0Desired: amount0ToMint,
                 amount1Desired: amount1ToMint,
                 amount0Min: 0,
@@ -124,6 +138,11 @@ contract LiquidityUniswapV3 is IERC721Receiver {
         // already be created and initialized in order to mint
         (_tokenId, liquidity, amount0, amount1) = nonfungiblePositionManager
             .mint(params);
+
+        console.log("mint done....:");
+        getSqrtPriceAndTick(_pool);
+
+        getImpermanentLoss(_tokenId);
 
         // Create a deposit
         _createDeposit(msg.sender, _tokenId);
@@ -148,6 +167,46 @@ contract LiquidityUniswapV3 is IERC721Receiver {
             uint refund1 = amount1ToMint - amount1;
             TransferHelper.safeTransfer(_token1, msg.sender, refund1);
         }
+    }
+
+    function getSqrtPriceAndTick(IUniswapV3Pool _pool) public view returns(int24 ){
+        (uint160 sqrtPriceX96Final, int24 tick, , , , , ) = _pool.slot0();
+        console.log("Tick : ");
+        console.logInt(tick);
+        uint256 priceAfter = ((sqrtPriceX96Final * 1 ether) ** 2) / (2** (96*2));
+        console.log("Price ");
+        console.log(priceAfter);
+        return tick;
+    }
+
+    function getImpermanentLoss(uint _tokenId) public view{
+        (
+            ,
+            ,
+            address token0,
+            address token1,
+            ,
+            int24 tickLower,
+            int24 tickUpper,
+            ,
+            ,
+            ,
+            ,
+
+        ) = nonfungiblePositionManager.positions(_tokenId);
+
+        uint160 sqrtLowerPrice = TickMath.getSqrtRatioAtTick(tickLower);
+        uint160 sqrtUpperPrice = TickMath.getSqrtRatioAtTick(tickUpper);
+        address _poolAddress = factoryinstance.getPool(token0, token1, poolFee);
+        console.log(_poolAddress);
+
+        IUniswapV3Pool _pool;
+        _pool = IUniswapV3Pool(_poolAddress);
+        (uint160 sqrtCurrPrice, , , , , , ) = _pool.slot0();
+
+        uint160 il= (2 * sqrtCurrPrice - sqrtLowerPrice - (sqrtCurrPrice / sqrtUpperPrice)) / (1 - (sqrtLowerPrice) + ((1-(1/ sqrtUpperPrice)) * sqrtCurrPrice));
+        console.log("impermanent loss");
+        console.log(il);
     }
 
     function collectAllFees() external returns (uint256 amount0, uint256 amount1) {
