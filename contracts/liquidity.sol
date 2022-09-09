@@ -13,6 +13,7 @@ import "hardhat/console.sol";
 contract LiquidityUniswapV3 is IERC721Receiver {
     address public constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
     address public constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    address public constant WETH9 = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
     // 0.01% fee
     uint24 public constant poolFee = 100;
@@ -75,7 +76,7 @@ contract LiquidityUniswapV3 is IERC721Receiver {
         tokenId = _tokenId;
     }
 
-    function mintNewPosition()
+    function mintNewPosition(address _token0, address _token1, uint amount0ToMint, uint amount1ToMint)
         external
         returns (
             uint _tokenId,
@@ -86,25 +87,25 @@ contract LiquidityUniswapV3 is IERC721Receiver {
     {
         // For this example, we will provide equal amounts of liquidity in both assets.
         // Providing liquidity in both assets means liquidity will be earning fees and is considered in-range.
-        uint amount0ToMint = 100 * 1e18;
-        uint amount1ToMint = 100 * 1e6;
+        // uint amount0ToMint = 100 * 1e18;
+        // uint amount1ToMint = 100 * 1e18;
 
         // Approve the position manager
         TransferHelper.safeApprove(
-            DAI,
+            _token0,
             address(nonfungiblePositionManager),
             amount0ToMint
         );
         TransferHelper.safeApprove(
-            USDC,
+            _token1,
             address(nonfungiblePositionManager),
             amount1ToMint
         );
 
         INonfungiblePositionManager.MintParams
             memory params = INonfungiblePositionManager.MintParams({
-                token0: DAI,
-                token1: USDC,
+                token0: _token0,
+                token1: _token1,
                 fee: poolFee,
                 // By using TickMath.MIN_TICK and TickMath.MAX_TICK, 
                 // we are providing liquidity across the whole range of the pool. 
@@ -130,22 +131,22 @@ contract LiquidityUniswapV3 is IERC721Receiver {
         // Remove allowance and refund in both assets.
         if (amount0 < amount0ToMint) {
             TransferHelper.safeApprove(
-                DAI,
+                _token0,
                 address(nonfungiblePositionManager),
                 0
             );
             uint refund0 = amount0ToMint - amount0;
-            TransferHelper.safeTransfer(DAI, msg.sender, refund0);
+            TransferHelper.safeTransfer(_token0, msg.sender, refund0);
         }
 
         if (amount1 < amount1ToMint) {
             TransferHelper.safeApprove(
-                USDC,
+                _token1,
                 address(nonfungiblePositionManager),
                 0
             );
             uint refund1 = amount1ToMint - amount1;
-            TransferHelper.safeTransfer(USDC, msg.sender, refund1);
+            TransferHelper.safeTransfer(_token1, msg.sender, refund1);
         }
     }
 
