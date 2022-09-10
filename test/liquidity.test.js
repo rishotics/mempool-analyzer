@@ -30,7 +30,7 @@ const ALCHEMY_URL_MAINNET = process.env.ALCHEMY_URL_MAINNET
 
 
 function tick_to_price(tick){
-  return 
+  return Math.pow(1.0001, tick);
 }
 
 
@@ -98,7 +98,6 @@ describe("LiquidityUniswapV3", () => {
       provider
     )
 
-
     dai = await ethers.getContractAt("IERC20", DAI)
     usdc = await ethers.getContractAt("IERC20", USDC)
     weth = await ethers.getContractAt("IWETH", WETH9)
@@ -127,13 +126,13 @@ describe("LiquidityUniswapV3", () => {
   })
 
   it("mintNewPosition", async () => {
+    let token0 = DAI
+    let token1 = WETH9
+    let poolFee = 100
     const [immutables, state] = await Promise.all([getPoolImmutables(poolContract), getPoolState(poolContract)])
 
-    let slot0 = await poolContract.slot0();
-    console.log(slot0)
-    let sqrt_price = ((BigNumber.from(slot0.sqrtPriceX96)).toString())
-    const priceInit = univ3prices([18, 18], sqrt_price).toSignificant({ decimalPlaces: 3 });
-    console.log(`P before swap: ${priceInit}`)
+    let InitPrice = await printCurrentPrice(liquidityContract, token0, token1, poolFee);
+
     console.log(`ETH balance: ${await ethers.provider.getBalance(accounts[0].address)}`)
     
     console.log( ` transffering DAI ....`)
@@ -149,13 +148,48 @@ describe("LiquidityUniswapV3", () => {
     await weth.connect(accounts[0]).transfer(liquidityContract.address, wethAmount);
 
     console.log( `calling mint....`)
-    await liquidityContract.connect(accounts[0]).mintNewPosition(DAI, WETH9, daiAmount, wethAmount);
+    
+    let txn = await liquidityContract.connect(accounts[0]).mintNewPosition(token0, token1, daiAmount, wethAmount, poolFee);
+    let rc = await txn.wait();
+    let adding_liquidity_event = rc.events.find(
+      (event) => event.event === "LiquidityAdded"
+    )
 
-    let slot0_final = await poolContract.slot0();
-    console.log(slot0_final)
-    let sqrt_price_final = ((BigNumber.from(slot0_final.sqrtPriceX96)).toString())
-    const priceFinal = univ3prices([18, 18], sqrt_price_final).toSignificant({ decimalPlaces: 3 });
-    console.log(`price Final: ${priceFinal}`)
+    let [tokenId, , , ] = adding_liquidity_event.args;
+    console.log(`Token ID: ${tokenId}`);
+
+    let [ticktLower, tickUpper, liquidity, sqrtLower, sqrtUpper] = await liquidityContract.getPosition(tokenId);
+    console.log(`ticktLower: ${ticktLower} tickUpper: ${tickUpper} liquidity: ${liquidity}`)
+    
+    // let priceLower = univ3prices([18, 18], sqrtLower).toSignificant({ decimalPlaces: 3 });
+    // let priceUpper = univ3prices([18, 18], sqrtUpper).toSignificant({ decimalPlaces: 3 });
+
+    let priceLower = 1/tick_to_price(ticktLower);
+    let priceUpper = 1/tick_to_price(tickUpper);
+
+    console.log(`priceLower: ${priceLower} priceUpper: ${priceUpper}`);
+
+    let FinalPrice = await printCurrentPrice(liquidityContract, token0, token1, poolFee);
+    let alpha = FinalPrice/InitPrice;
+    let r = Math.pow((tickUpper/ticktLower), 0.5);
+    console.log(`alpha: ${alpha} R: ${r}`)
+    let sqrtR = (Math.pow(r,0.5))
+    let il;
+
+    if (alpha < (1/r)){
+      console.log(`IL 1`)
+      il = (( sqrtR * alpha) - 1) / (alpha + 1)
+    }
+    else if(alpha < r){
+      console.log(`IL 2`)
+      il = ((sqrtR) / (sqrtR - 1)) * ( ((2 * Math.pow(alpha,0.5)) / (alpha + 1)) - 1)
+    }
+    else{
+      console.log(`IL 3`)
+      il = (sqrtR - alpha) / (alpha + 1)
+    }
+    console.log(`Impermanent Loss: ${il}`)
+
 
     console.log(
       "DAI balance after add liquidity",
@@ -169,3 +203,22 @@ describe("LiquidityUniswapV3", () => {
   })
 
 })
+
+
+async function printCurrentPrice(liquidityContract, token0, token1, poolFee) {
+  let [ FinalTick, FinalSqrtPrice ] = await liquidityContract.getTickAndSqrtPrice(token0, token1, poolFee);
+  let sqrt_price = ((BigNumber.from(FinalSqrtPrice)).toString())
+  const priceFinal = univ3prices([18, 18], sqrt_price).toSignificant({ decimalPlaces: 3 });
+  console.log(`price : ${priceFinal}`);
+  return priceFinal;
+}
+
+// async funciton getImpermanentLoss(tokenId, poolContract) {
+
+// }
+
+//Doubts
+//1. different ticks in sdk and contract
+//2. ticks dont change after adding liquidity
+//3. check if liquidity changes
+//4. what all factors change after adding liquidity

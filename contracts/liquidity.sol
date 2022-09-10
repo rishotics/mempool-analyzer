@@ -22,7 +22,7 @@ contract LiquidityUniswapV3 is IERC721Receiver {
     address public constant WETH9 = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
     // 0.01% fee
-    uint24 public constant poolFee = 100;
+    uint24 public poolFee;
 
     INonfungiblePositionManager public nonfungiblePositionManager = 
         INonfungiblePositionManager(0xC36442b4a4522E871399CD717aBDD847Ab11FE88);
@@ -42,6 +42,8 @@ contract LiquidityUniswapV3 is IERC721Receiver {
 
     // Store token id used in this example
     uint public tokenId;
+
+    event LiquidityAdded(uint tokenId, address token0, address token1, uint amount0, uint amount1);
 
     // Implementing `onERC721Received` so this contract can receive custody of erc721 tokens
     function onERC721Received(
@@ -84,7 +86,7 @@ contract LiquidityUniswapV3 is IERC721Receiver {
         tokenId = _tokenId;
     }
 
-    function mintNewPosition(address _token0, address _token1, uint amount0ToMint, uint amount1ToMint)
+    function mintNewPosition(address _token0, address _token1, uint amount0ToMint, uint amount1ToMint, uint24 _fee)
         external
         returns (
             uint _tokenId,
@@ -93,6 +95,7 @@ contract LiquidityUniswapV3 is IERC721Receiver {
             uint amount1
         )
     {
+        poolFee = _fee;
         // For this example, we will provide equal amounts of liquidity in both assets.
         // Providing liquidity in both assets means liquidity will be earning fees and is considered in-range.
         // uint amount0ToMint = 100 * 1e18;
@@ -167,6 +170,7 @@ contract LiquidityUniswapV3 is IERC721Receiver {
             uint refund1 = amount1ToMint - amount1;
             TransferHelper.safeTransfer(_token1, msg.sender, refund1);
         }
+        emit LiquidityAdded(_tokenId, _token0, _token1, amount0, amount1);
     }
 
     function getSqrtPriceAndTick(IUniswapV3Pool _pool) public view returns(int24 ){
@@ -177,6 +181,35 @@ contract LiquidityUniswapV3 is IERC721Receiver {
         console.log("Price ");
         console.log(priceAfter);
         return tick;
+    }
+
+    function getPosition(uint _tokenId) public view returns( int24 tickLower, int24 tickUpper, uint128 liquidity, uint160 sqrtLower, uint160 sqrtUpper){
+        (
+            ,
+            ,
+            ,
+            ,
+            ,
+            tickLower,
+            tickUpper,
+            liquidity,
+            ,
+            ,
+            ,
+
+        ) = nonfungiblePositionManager.positions(_tokenId);
+
+        sqrtLower = TickMath.getSqrtRatioAtTick(tickLower);
+        sqrtUpper = TickMath.getSqrtRatioAtTick(tickUpper);
+    }
+
+    function getTickAndSqrtPrice(address _token0, address _token1, uint24 _fee) public view returns(int24 tick, uint160 sqrtPrice){
+        address _poolAddress = factoryinstance.getPool(_token0, _token1, _fee);
+        console.log(_poolAddress);
+
+        IUniswapV3Pool _pool;
+        _pool = IUniswapV3Pool(_poolAddress);
+        ( sqrtPrice, tick, , , , , ) = _pool.slot0();
     }
 
     function getImpermanentLoss(uint _tokenId) public view{
