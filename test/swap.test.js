@@ -25,35 +25,6 @@ require('dotenv').config({ path: ".env.local" })
 
 const ALCHEMY_URL_MAINNET = process.env.ALCHEMY_URL_MAINNET
 
-async function getPoolImmutables(poolContract) {
-  const [factory, token0, token1, fee, tickSpacing, maxLiquidityPerTick] = await Promise.all([
-    poolContract.factory(),
-    poolContract.token0(),
-    poolContract.token1(),
-    poolContract.fee(),
-    poolContract.tickSpacing(),
-    poolContract.maxLiquidityPerTick(),
-  ])
-
-  return {
-    factory: factory,
-    token0: token0,
-    token1: token1,
-    fee: fee,
-    tickSpacing: tickSpacing,
-    maxLiquidityPerTick: maxLiquidityPerTick,
-  }
-}
-
-async function getPoolState(poolContract) {
-  const [liquidity, slot] = await Promise.all([poolContract.liquidity(), poolContract.slot0()])
-
-  return {
-    liquidity: liquidity,
-    sqrtPriceX96: slot[0],
-    tick: slot[1]
-  }
-}
 
 describe("SwapUniswapV3", () => {
   let liquidityContract
@@ -126,7 +97,7 @@ describe("SwapUniswapV3", () => {
     const priceInit = univ3prices([18, 18], sqrt_price).toSignificant({ decimalPlaces: 3 });
     console.log(`P before swap: ${priceInit}`)
 
-    let amountIn = 5000n * 10n ** 18n
+    let amountIn = 1000n * 10n ** 18n
     await weth.deposit({ value: amountIn })
     let weth_balance = await weth.balanceOf(accounts[0].address);
     console.log(`WETH amount before swap: ${ethers.utils.formatEther(weth_balance)}`);
@@ -146,20 +117,6 @@ describe("SwapUniswapV3", () => {
     console.log(`price Final: ${priceFinal}`)
 
   })
-
-  // it("swapExactOutputSingle", async () => {
-  //   const wethAmountInMax = 10n ** 18n
-  //   const daiAmountOut = 100n * 10n ** 18n
-
-  //   // Deposit WETH
-  //   await weth.connect(accounts[1]).deposit({ value: wethAmountInMax })
-  //   await weth.connect(accounts[1]).approve(swapContract.address, wethAmountInMax)
-
-  //   // Swap
-  //   console.log("DAI balance before swap", ethers.utils.formatEther(await dai.balanceOf(accounts[1].address)))
-  //   await swapContract.connect(accounts[1]).swapExactOutputSingle(daiAmountOut, wethAmountInMax)
-  //   console.log("DAI balance after swap", ethers.utils.formatEther(await dai.balanceOf(accounts[1].address)))
-  // })
 
 
 })

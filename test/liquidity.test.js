@@ -33,36 +33,12 @@ function tick_to_price(tick){
   return Math.pow(1.0001, tick);
 }
 
-
-
-async function getPoolImmutables(poolContract) {
-  const [factory, token0, token1, fee, tickSpacing, maxLiquidityPerTick] = await Promise.all([
-    poolContract.factory(),
-    poolContract.token0(),
-    poolContract.token1(),
-    poolContract.fee(),
-    poolContract.tickSpacing(),
-    poolContract.maxLiquidityPerTick(),
-  ])
-
-  return {
-    factory: factory,
-    token0: token0,
-    token1: token1,
-    fee: fee,
-    tickSpacing: tickSpacing,
-    maxLiquidityPerTick: maxLiquidityPerTick,
-  }
-}
-
-async function getPoolState(poolContract) {
-  const [liquidity, slot] = await Promise.all([poolContract.liquidity(), poolContract.slot0()])
-
-  return {
-    liquidity: liquidity,
-    sqrtPriceX96: slot[0],
-    tick: slot[1]
-  }
+async function printCurrentPrice(liquidityContract, token0, token1, poolFee) {
+  let [ FinalTick, FinalSqrtPrice ] = await liquidityContract.getTickAndSqrtPrice(token0, token1, poolFee);
+  let sqrt_price = ((BigNumber.from(FinalSqrtPrice)).toString())
+  const priceFinal = univ3prices([18, 18], sqrt_price).toSignificant({ decimalPlaces: 3 });
+  console.log(`price : ${priceFinal}`);
+  return priceFinal;
 }
 
 describe("LiquidityUniswapV3", () => {
@@ -116,7 +92,6 @@ describe("LiquidityUniswapV3", () => {
     const usdcWhale = await ethers.getSigner(USDC_WHALE)
 
     // Send DAI and USDC to accounts[0]
-
     expect(await dai.balanceOf(daiWhale.address)).to.gte(daiAmount)
     expect(await usdc.balanceOf(usdcWhale.address)).to.gte(usdcAmount)
 
@@ -128,28 +103,28 @@ describe("LiquidityUniswapV3", () => {
   it("mintNewPosition", async () => {
     let token0 = DAI
     let token1 = WETH9
-    let poolFee = 100
-    const [immutables, state] = await Promise.all([getPoolImmutables(poolContract), getPoolState(poolContract)])
+    let poolFee = 3000 //0.3% fees pool
+    let token0amount = 100n * 10n ** 18n
+    let token1amount = 1n * 10n ** 18n
 
     let InitPrice = await printCurrentPrice(liquidityContract, token0, token1, poolFee);
 
     console.log(`ETH balance: ${await ethers.provider.getBalance(accounts[0].address)}`)
     
     console.log( ` transffering DAI ....`)
-    await dai.connect(accounts[0]).transfer(liquidityContract.address, daiAmount);
+    await dai.connect(accounts[0]).transfer(liquidityContract.address, token0amount);
 
     console.log( ` transffering USDC ....`)
     await usdc.connect(accounts[0]).transfer(liquidityContract.address, usdcAmount);
 
     console.log( ` transffering WETH ....`)
-    await weth.deposit({ value: wethAmount })
+    await weth.deposit({ value: token1amount })
     wethAmount = await weth.balanceOf(accounts[0].address);
     console.log(`WETH amount before swap: ${ethers.utils.formatEther(wethAmount)}`);
     await weth.connect(accounts[0]).transfer(liquidityContract.address, wethAmount);
 
     console.log( `calling mint....`)
-    
-    let txn = await liquidityContract.connect(accounts[0]).mintNewPosition(token0, token1, daiAmount, wethAmount, poolFee);
+    let txn = await liquidityContract.connect(accounts[0]).mintNewPosition(token0, token1, token0amount, token1amount, poolFee);
     let rc = await txn.wait();
     let adding_liquidity_event = rc.events.find(
       (event) => event.event === "LiquidityAdded"
@@ -157,21 +132,24 @@ describe("LiquidityUniswapV3", () => {
 
     let [tokenId, , , ] = adding_liquidity_event.args;
     console.log(`Token ID: ${tokenId}`);
-
+    // Extracting 
     let [ticktLower, tickUpper, liquidity, sqrtLower, sqrtUpper] = await liquidityContract.getPosition(tokenId);
     console.log(`ticktLower: ${ticktLower} tickUpper: ${tickUpper} liquidity: ${liquidity}`)
-    
-    // let priceLower = univ3prices([18, 18], sqrtLower).toSignificant({ decimalPlaces: 3 });
-    // let priceUpper = univ3prices([18, 18], sqrtUpper).toSignificant({ decimalPlaces: 3 });
-
-    let priceLower = 1/tick_to_price(ticktLower);
-    let priceUpper = 1/tick_to_price(tickUpper);
+    let factor = 1;
+    if(tickUpper < 0) factor = -1;
+    let priceLower = tick_to_price(factor * ticktLower);
+    let priceUpper = tick_to_price(factor * tickUpper);
 
     console.log(`priceLower: ${priceLower} priceUpper: ${priceUpper}`);
 
     let FinalPrice = await printCurrentPrice(liquidityContract, token0, token1, poolFee);
+
+    //Impermanent Loass calculation of V3 based on https://lambert-guillaume.medium.com/an-analysis-of-the-expected-value-of-the-impermanent-loss-in-uniswap-bfbfebbefed2
     let alpha = FinalPrice/InitPrice;
     let r = Math.pow((tickUpper/ticktLower), 0.5);
+    if (ticktLower < 0 ){
+      r = 1/r;
+    }
     console.log(`alpha: ${alpha} R: ${r}`)
     let sqrtR = (Math.pow(r,0.5))
     let il;
@@ -200,18 +178,17 @@ describe("LiquidityUniswapV3", () => {
       ethers.utils.formatUnits(await usdc.balanceOf(accounts[0].address), 6)
     )
 
+    console.log(
+      "WETH9 balance after add liquidity",
+      ethers.utils.formatEther(await weth.balanceOf(accounts[0].address))
+    )
+
   })
 
 })
 
 
-async function printCurrentPrice(liquidityContract, token0, token1, poolFee) {
-  let [ FinalTick, FinalSqrtPrice ] = await liquidityContract.getTickAndSqrtPrice(token0, token1, poolFee);
-  let sqrt_price = ((BigNumber.from(FinalSqrtPrice)).toString())
-  const priceFinal = univ3prices([18, 18], sqrt_price).toSignificant({ decimalPlaces: 3 });
-  console.log(`price : ${priceFinal}`);
-  return priceFinal;
-}
+
 
 // async funciton getImpermanentLoss(tokenId, poolContract) {
 
