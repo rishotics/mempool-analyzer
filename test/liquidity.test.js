@@ -141,6 +141,7 @@ describe("LiquidityUniswapV3", () => {
     let token1amount = 1n * 10n ** 18n
     let Token0Decimals = 18;
     let Token1Decimals = 18;
+    let factorForTickWidth = 2;
 
 
     let InitPrice = await printCurrentPrice(liquidityContract, token0, token1, poolFee,Token0Decimals, Token1Decimals);
@@ -211,6 +212,8 @@ describe("LiquidityUniswapV3", () => {
     }
     console.log(`Impermanent Loss: ${il}`)
 
+    
+
 
     console.log(
       "DAI balance after add liquidity",
@@ -220,11 +223,23 @@ describe("LiquidityUniswapV3", () => {
       "USDC balance after add liquidity",
       ethers.utils.formatUnits(await usdc.balanceOf(accounts[0].address), 6)
     )
-
     console.log(
       "WETH9 balance after add liquidity",
       ethers.utils.formatEther(await weth.balanceOf(accounts[0].address))
     )
+
+    // if(il> threshholdValue){
+    //   log("Decrease liquidity And Collect Fees...");
+    //   txn = await liquidityContract.connect(accounts[0]).decreaseLiquidity(tokenId);
+    //   rc = await txn.wait();
+    //   log("Removed")
+    // }
+
+
+    log("Decrease liquidity And Collect Fees...");
+    txn = await liquidityContract.connect(accounts[0]).decreaseLiquidity(tokenId);
+    rc = await txn.wait();
+    log("Removed")
 
   })
 

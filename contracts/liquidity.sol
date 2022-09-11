@@ -36,6 +36,10 @@ contract LiquidityUniswapV3 is IERC721Receiver {
         uint128 liquidity;
         address token0;
         address token1;
+        int24 tickLower;
+        int24 tickUpper;
+        uint256 tokensOwed0;
+        uint256 tokensOwed1;
     }
 
     /// @dev deposits[tokenId] => Deposit
@@ -59,11 +63,11 @@ contract LiquidityUniswapV3 is IERC721Receiver {
         uint256 _tokenId,
         bytes calldata
     ) external override returns (bytes4) {
-        _createDeposit(operator, _tokenId);
+        // _createDeposit(operator, _tokenId, tickLower, tickUpper, tokensOwed0, tokensOwed1);
         return this.onERC721Received.selector;
     }
 
-    function _createDeposit(address owner, uint256 _tokenId) internal {
+    function _createDeposit(address owner, uint256 _tokenId, int24 tickLower, int24 tickUpper, uint256 tokensOwed0, uint256 tokensOwed1) internal {
         (
             ,
             ,
@@ -84,7 +88,11 @@ contract LiquidityUniswapV3 is IERC721Receiver {
             owner: owner,
             liquidity: liquidity,
             token0: token0,
-            token1: token1
+            token1: token1,
+            tickLower: tickLower,
+            tickUpper: tickUpper,
+            tokensOwed0: tokensOwed0,
+            tokensOwed1: tokensOwed1
         });
 
         console.log("Token id", _tokenId);
@@ -143,6 +151,8 @@ contract LiquidityUniswapV3 is IERC721Receiver {
         console.log("mint....:");
         (int24 tickBefore, ) = getTickAndSqrtPrice(_token0, _token1, poolFee);
         int24 tickSpacing = _pool.tickSpacing();
+        // int24 tickLower =  _floor(tickBefore - (2 * tickSpacing), tickSpacing);
+        // int24 tickUpper =  _floor(tickBefore + (2 * tickSpacing), tickSpacing);
 
         INonfungiblePositionManager.MintParams
             memory params = INonfungiblePositionManager.MintParams({
@@ -167,7 +177,7 @@ contract LiquidityUniswapV3 is IERC721Receiver {
         console.log("mint done....:");
 
         // Create a deposit
-        _createDeposit(msg.sender, _tokenId);
+        _createDeposit(msg.sender, _tokenId, _floor(tickBefore - (2 * tickSpacing), tickSpacing), _floor(tickBefore + (2 * tickSpacing), tickSpacing), amount0, amount1);
 
         // Remove allowance and refund in both assets.
         if (amount0 < amount0ToMint) {
@@ -300,18 +310,21 @@ contract LiquidityUniswapV3 is IERC721Receiver {
         console.log("amount 1", amount1);
     }
 
-    function decreaseLiquidity(uint128 liquidity)
+    function decreaseLiquidity(uint256 _tokenId)
         external
         returns (uint256 amount0, uint256 amount1)
     {
+        
+        Deposit memory deposit = deposits[_tokenId];
+        require(msg.sender == deposit.owner, "Wrong owner Call");
         INonfungiblePositionManager.DecreaseLiquidityParams
             memory params = INonfungiblePositionManager
                 .DecreaseLiquidityParams({
-                    tokenId: tokenId,
-                    liquidity: liquidity,
+                    tokenId: _tokenId,
+                    liquidity: deposit.liquidity,
                     amount0Min: 0,
                     amount1Min: 0,
-                    deadline: block.timestamp
+                    deadline: uint256(-1)
                 });
 
         (amount0, amount1) = nonfungiblePositionManager.decreaseLiquidity(
@@ -320,5 +333,26 @@ contract LiquidityUniswapV3 is IERC721Receiver {
 
         console.log("amount 0", amount0);
         console.log("amount 1", amount1);
+        console.log("collecting fees");
+        collectAllFees(_tokenId);
+
+        nonfungiblePositionManager.burn(_tokenId);
+    }
+
+
+    function collectAllFees(uint256 _tokenId) internal returns (uint256 amount0, uint256 amount1) {
+        
+        INonfungiblePositionManager.CollectParams memory params =
+            INonfungiblePositionManager.CollectParams({
+                tokenId: _tokenId,
+                recipient: msg.sender,
+                amount0Max: type(uint128).max,
+                amount1Max: type(uint128).max
+            });
+
+        (amount0, amount1) = nonfungiblePositionManager.collect(params);
+
+        console.log("fee 0", amount0);
+        console.log("fee 1", amount1);
     }
 }
