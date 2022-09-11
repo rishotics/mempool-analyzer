@@ -230,14 +230,13 @@ describe("LiquidityUniswapV3", () => {
 
     // if(il> threshholdValue){
     //   log("Decrease liquidity And Collect Fees...");
-    //   txn = await liquidityContract.connect(accounts[0]).decreaseLiquidity(tokenId);
+    //   txn = await liquidityContract.connect(accounts[0]).decreaseLiquidityAndCollectFees(tokenId);
     //   rc = await txn.wait();
     //   log("Removed")
     // }
 
-
     log("Decrease liquidity And Collect Fees...");
-    txn = await liquidityContract.connect(accounts[0]).decreaseLiquidity(tokenId);
+    txn = await liquidityContract.connect(accounts[0]).decreaseLiquidityAndCollectFees(tokenId);
     rc = await txn.wait();
     log("Removed")
 

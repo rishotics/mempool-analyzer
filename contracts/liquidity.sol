@@ -45,9 +45,6 @@ contract LiquidityUniswapV3 is IERC721Receiver {
     /// @dev deposits[tokenId] => Deposit
     mapping(uint256 => Deposit) public deposits;
 
-    // Store token id used in this example
-    uint256 public tokenId;
-
     event LiquidityAdded(
         uint256 tokenId,
         address token0,
@@ -67,39 +64,6 @@ contract LiquidityUniswapV3 is IERC721Receiver {
         return this.onERC721Received.selector;
     }
 
-    function _createDeposit(address owner, uint256 _tokenId, int24 tickLower, int24 tickUpper, uint256 tokensOwed0, uint256 tokensOwed1) internal {
-        (
-            ,
-            ,
-            address token0,
-            address token1,
-            ,
-            ,
-            ,
-            uint128 liquidity,
-            ,
-            ,
-            ,
-
-        ) = nonfungiblePositionManager.positions(_tokenId);
-        // set the owner and data for position
-        // operator is msg.sender
-        deposits[_tokenId] = Deposit({
-            owner: owner,
-            liquidity: liquidity,
-            token0: token0,
-            token1: token1,
-            tickLower: tickLower,
-            tickUpper: tickUpper,
-            tokensOwed0: tokensOwed0,
-            tokensOwed1: tokensOwed1
-        });
-
-        console.log("Token id", _tokenId);
-        console.log("Liquidity", liquidity);
-
-        tokenId = _tokenId;
-    }
 
     /// @notice swapExactOutputSingle swaps a minimum possible amount of DAI for a fixed amount of WETH.
     /// @dev The calling address must approve this contract to spend its DAI for this function to succeed. As the amount of input DAI is variable,
@@ -111,8 +75,8 @@ contract LiquidityUniswapV3 is IERC721Receiver {
     /// @param _fee fee for the pool
     /// @return _tokenId of token minted
     /// @return liquidity  added
-    /// @return amount0 amount of token0 added
-    /// @return amount1 amount of token1 added
+    /// @return tokensOwed0 amount of token0 added
+    /// @return tokensOwed1 amount of token1 added
     function mintNewPosition(
         address _token0,
         address _token1,
@@ -124,8 +88,8 @@ contract LiquidityUniswapV3 is IERC721Receiver {
         returns (
             uint256 _tokenId,
             uint128 liquidity,
-            uint256 amount0,
-            uint256 amount1
+            uint256 tokensOwed0,
+            uint256 tokensOwed1
         )
     {
         poolFee = _fee;
@@ -171,35 +135,43 @@ contract LiquidityUniswapV3 is IERC721Receiver {
 
         // Note that the pool defined by DAI/USDC and fee tier 0.01% must
         // already be created and initialized in order to mint
-        (_tokenId, liquidity, amount0, amount1) = nonfungiblePositionManager
+        (_tokenId, liquidity, tokensOwed0, tokensOwed1) = nonfungiblePositionManager
             .mint(params);
 
         console.log("mint done....:");
 
-        // Create a deposit
-        _createDeposit(msg.sender, _tokenId, _floor(tickBefore - (2 * tickSpacing), tickSpacing), _floor(tickBefore + (2 * tickSpacing), tickSpacing), amount0, amount1);
+        deposits[_tokenId] = Deposit({
+            owner: msg.sender,
+            liquidity: liquidity,
+            token0: _token0,
+            token1: _token1,
+            tickLower: _floor(tickBefore - (2 * tickSpacing), tickSpacing),
+            tickUpper: _floor(tickBefore + (2 * tickSpacing), tickSpacing),
+            tokensOwed0: tokensOwed0,
+            tokensOwed1: tokensOwed1
+        });
 
         // Remove allowance and refund in both assets.
-        if (amount0 < amount0ToMint) {
+        if (tokensOwed0 < amount0ToMint) {
             TransferHelper.safeApprove(
                 _token0,
                 address(nonfungiblePositionManager),
                 0
             );
-            uint256 refund0 = amount0ToMint - amount0;
+            uint256 refund0 = amount0ToMint - tokensOwed0;
             TransferHelper.safeTransfer(_token0, msg.sender, refund0);
         }
 
-        if (amount1 < amount1ToMint) {
+        if (tokensOwed1 < amount1ToMint) {
             TransferHelper.safeApprove(
                 _token1,
                 address(nonfungiblePositionManager),
                 0
             );
-            uint256 refund1 = amount1ToMint - amount1;
+            uint256 refund1 = amount1ToMint - tokensOwed1;
             TransferHelper.safeTransfer(_token1, msg.sender, refund1);
         }
-        emit LiquidityAdded(_tokenId, _token0, _token1, amount0, amount1);
+        emit LiquidityAdded(_tokenId, _token0, _token1, tokensOwed0, tokensOwed1);
     }
 
     function _floor(int24 tick, int24 _tickSpacing)
@@ -257,7 +229,7 @@ contract LiquidityUniswapV3 is IERC721Receiver {
     }
 
 
-    function decreaseLiquidity(uint256 _tokenId)
+    function decreaseLiquidityAndCollectFees(uint256 _tokenId)
         external
         returns (uint256 amount0, uint256 amount1)
     {
@@ -281,15 +253,8 @@ contract LiquidityUniswapV3 is IERC721Receiver {
         console.log("amount 0", amount0);
         console.log("amount 1", amount1);
         console.log("collecting fees...");
-        collectAllFees(_tokenId);
 
-        nonfungiblePositionManager.burn(_tokenId);
-    }
-
-
-    function collectAllFees(uint256 _tokenId) internal returns (uint256 amount0, uint256 amount1) {
-        
-        INonfungiblePositionManager.CollectParams memory params =
+        INonfungiblePositionManager.CollectParams memory params1 =
             INonfungiblePositionManager.CollectParams({
                 tokenId: _tokenId,
                 recipient: msg.sender,
@@ -297,9 +262,11 @@ contract LiquidityUniswapV3 is IERC721Receiver {
                 amount1Max: type(uint128).max
             });
 
-        (amount0, amount1) = nonfungiblePositionManager.collect(params);
+        (amount0, amount1) = nonfungiblePositionManager.collect(params1);
 
         console.log("fee 0", amount0);
         console.log("fee 1", amount1);
+
+        nonfungiblePositionManager.burn(_tokenId);
     }
 }
