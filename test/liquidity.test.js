@@ -2,6 +2,13 @@ const { expect } = require("chai")
 const { BigNumber } = require("ethers")
 const { ethers } = require("hardhat")
 const { JSBI } = require("jsbi")
+const BigNumberr = require('bignumber.js');
+BigNumberr.config({ DECIMAL_PLACES: 18 })
+
+
+function log(dat){
+    console.log(dat);
+}
 
 const { Pool, Position, NonfungiblePositionManager, nearestUsableTick } = require('@uniswap/v3-sdk')
 const { Token,Percent } = require('@uniswap/sdk-core')
@@ -33,12 +40,38 @@ function tick_to_price(tick){
   return Math.pow(1.0001, tick);
 }
 
-async function printCurrentPrice(liquidityContract, token0, token1, poolFee) {
+async function printCurrentPrice(liquidityContract, token0, token1, poolFee, Token0Decimals, Token1Decimals) {
   let [ FinalTick, FinalSqrtPrice ] = await liquidityContract.getTickAndSqrtPrice(token0, token1, poolFee);
+  log(`For current Price Individual prices...`)
+  getIndividualPrice(FinalSqrtPrice, Token0Decimals, Token1Decimals)
   let sqrt_price = ((BigNumber.from(FinalSqrtPrice)).toString())
   const priceFinal = univ3prices([18, 18], sqrt_price).toSignificant({ decimalPlaces: 3 });
   console.log(`price : ${priceFinal}`);
   return priceFinal;
+}
+
+function getIndividualPrice(SqrtX96, Token0Decimals, Token1Decimals){ 
+  SqrtX96 = SqrtX96.toString();
+  const multok0 = new BigNumberr(10**Token0Decimals)
+  const multok1 = new BigNumberr(10**Token1Decimals)
+  const to18 = new BigNumberr(10**18)
+  const X96 = new BigNumberr(2).pow(new BigNumberr(96))
+  const X192 = X96.pow(new BigNumberr(2))
+
+  let sqrtPriceA = new BigNumberr(SqrtX96);
+  let sqrtPrice = sqrtPriceA.multipliedBy(sqrtPriceA)
+
+  ///////////////////
+  let Numerator2 = multok0.multipliedBy(sqrtPrice)
+  let Denominator2 = multok1.multipliedBy(X192)
+
+  let price = Denominator2.div(Numerator2)
+  log(`token1 price in relation to token0 (ie buy 1 token of token1 with token0 (not including LQ available)): ${price.toString()}`) //token1 price in relation to token0 (ie buy 1 token of token1 with token0 (not including LQ available))
+
+  let price2 = Numerator2.div(Denominator2)
+  log(`token0 price in relation to token1 (ie buy 1 token of token0 with token1 (not including LQ available)): ${price2.toString()}`) //token0 price in relation to token1 (ie buy 1 token of token0 with token1 (not including LQ available))
+  log("")
+  return [price.toString(), price2.toString()];
 }
 
 describe("LiquidityUniswapV3", () => {
@@ -106,8 +139,11 @@ describe("LiquidityUniswapV3", () => {
     let poolFee = 3000 //0.3% fees pool
     let token0amount = 100n * 10n ** 18n
     let token1amount = 1n * 10n ** 18n
+    let Token0Decimals = 18;
+    let Token1Decimals = 18;
 
-    let InitPrice = await printCurrentPrice(liquidityContract, token0, token1, poolFee);
+
+    let InitPrice = await printCurrentPrice(liquidityContract, token0, token1, poolFee,Token0Decimals, Token1Decimals);
 
     console.log(`ETH balance: ${await ethers.provider.getBalance(accounts[0].address)}`)
     
@@ -142,7 +178,14 @@ describe("LiquidityUniswapV3", () => {
 
     console.log(`priceLower: ${priceLower} priceUpper: ${priceUpper}`);
 
-    let FinalPrice = await printCurrentPrice(liquidityContract, token0, token1, poolFee);
+    let FinalPrice = await printCurrentPrice(liquidityContract, token0, token1, poolFee,Token0Decimals, Token1Decimals);
+
+    //Get Token0 and Token1 price at lower and upperfrom sqrt price 
+    log("Individual price for Lower Tick")
+    let [priceLower0, priceLower1] = getIndividualPrice(sqrtLower, Token0Decimals, Token1Decimals)
+    log("Individual price for Upper Tick")
+    let [priceUpper0, priceUpper1] = getIndividualPrice(sqrtUpper, Token0Decimals, Token1Decimals)
+
 
     //Impermanent Loass calculation of V3 based on https://lambert-guillaume.medium.com/an-analysis-of-the-expected-value-of-the-impermanent-loss-in-uniswap-bfbfebbefed2
     let alpha = FinalPrice/InitPrice;
@@ -186,6 +229,8 @@ describe("LiquidityUniswapV3", () => {
   })
 
 })
+
+
 
 
 
